@@ -5,22 +5,28 @@ interface ApiKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
   apiKey: string;
-  onSaveApiKey: (key: string) => void;
+  apiEndpoint: string;
+  apiModel: string;
+  onSaveApiConfig: (key: string, endpoint: string, model: string) => void;
 }
 
 export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   isOpen,
   onClose,
   apiKey,
-  onSaveApiKey
+  apiEndpoint,
+  apiModel,
+  onSaveApiConfig
 }) => {
   const [inputKey, setInputKey] = useState(apiKey);
+  const [inputEndpoint, setInputEndpoint] = useState(apiEndpoint);
+  const [inputModel, setInputModel] = useState(apiModel);
   const [saved, setSaved] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    onSaveApiKey(inputKey.trim());
+    onSaveApiConfig(inputKey.trim(), inputEndpoint.trim(), inputModel.trim());
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -34,7 +40,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Key className="w-6 h-6 text-amber-400" />
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Google Gemini API Key Setup</h2>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>AI Provider Setup</h2>
           </div>
           <button onClick={onClose} className="btn btn-secondary" style={{ padding: '0.35rem 0.6rem' }}>
             <X className="w-5 h-5" />
@@ -44,17 +50,17 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
         <div style={{ padding: '0.85rem 1rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(245, 158, 11, 0.3)', marginBottom: '1.25rem', fontSize: '0.85rem', color: '#fcd34d', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
           <ShieldCheck className="w-5 h-5 flex-shrink-0 mt-0.5" />
           <div>
-            <strong>Optional LLM Enhancement:</strong> VoiceCraft AI includes a powerful built-in zero-config local NLP engine. Providing your Gemini API key unlocks deep Gemini 1.5 Flash LLM reasoning & translation capabilities! Keys are stored strictly locally in your browser.
+            <strong>Optional LLM Enhancement:</strong> Configure any API key and model endpoint. Gemini and OpenAI-compatible chat completion APIs are supported. Keys are stored strictly locally in your browser.
           </div>
         </div>
 
         <div style={{ marginBottom: '1.25rem' }}>
           <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-            GEMINI API KEY (AIZA...)
+            API KEY
           </label>
           <input
             type="password"
-            placeholder="AIzaSy..."
+            placeholder="Paste your provider API key"
             value={inputKey}
             onChange={(e) => setInputKey(e.target.value)}
             style={{
@@ -71,6 +77,20 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           />
         </div>
 
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+            API ENDPOINT
+          </label>
+          <input value={inputEndpoint} onChange={(e) => setInputEndpoint(e.target.value)} placeholder="https://api.openai.com/v1/chat/completions" style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--bg-card-border)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.875rem', outline: 'none' }} />
+        </div>
+
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+            MODEL ID
+          </label>
+          <input value={inputModel} onChange={(e) => setInputModel(e.target.value)} placeholder="gpt-4o-mini" style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--bg-card-border)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.875rem', outline: 'none' }} />
+        </div>
+
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             onClick={handleSave}
@@ -85,7 +105,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             <button
               onClick={() => {
                 setInputKey('');
-                onSaveApiKey('');
+                onSaveApiConfig('', inputEndpoint, inputModel);
               }}
               className="btn btn-secondary"
             >

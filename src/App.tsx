@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Header } from './components/Header';
 import { AudioRecorder } from './components/AudioRecorder';
+import { TextNoteInput } from './components/TextNoteInput';
 import { TranscriptViewer } from './components/TranscriptViewer';
 import { NoteGenerator } from './components/NoteGenerator';
 import { NoteEditor } from './components/NoteEditor';
@@ -17,7 +18,7 @@ import {
   getRecordingsFromStorage, saveRecordingsToStorage, 
   getNotesFromStorage, saveNotesToStorage, 
   getThemeMode, saveThemeMode, 
-  getGeminiApiKey, saveGeminiApiKey 
+  getApiKey, saveApiKey, getApiEndpoint, saveApiEndpoint, getApiModel, saveApiModel
 } from './services/storageService';
 
 export function App() {
@@ -30,7 +31,9 @@ export function App() {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [isSavedNotesModalOpen, setIsSavedNotesModalOpen] = useState(false);
   const [isMLModalOpen, setIsMLModalOpen] = useState(false);
-  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [apiEndpoint, setApiEndpoint] = useState('');
+  const [apiModel, setApiModel] = useState('');
 
   // Initial setup: Load theme, storage notes, and load default sample recording
   useEffect(() => {
@@ -41,8 +44,9 @@ export function App() {
     const notesFromStorage = getNotesFromStorage();
     setSavedNotes(notesFromStorage);
 
-    const apiKey = getGeminiApiKey();
-    setGeminiApiKey(apiKey);
+    setApiKey(getApiKey());
+    setApiEndpoint(getApiEndpoint());
+    setApiModel(getApiModel());
 
     // Auto load first sample recording so user sees content immediately
     if (SAMPLE_RECORDINGS.length > 0) {
@@ -95,6 +99,25 @@ export function App() {
     });
   };
 
+  const handleTextSourceReady = (title: string, text: string) => {
+    const recording: AudioRecording = {
+      id: 'rec-text-' + Date.now(),
+      title,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      duration: 0,
+      transcript: text,
+      segments: [{
+        id: 'seg-text-1',
+        speaker: 'Written Source',
+        startTime: 0,
+        endTime: 0,
+        text
+      }]
+    };
+    setActiveRecording(recording);
+    setActiveNote(null);
+  };
+
   const handleGenerateNote = async (templateId: NoteTemplateId, customPrompt?: string) => {
     if (!activeRecording || !activeRecording.transcript.trim()) return;
 
@@ -110,7 +133,9 @@ export function App() {
         activeRecording.transcript,
         templateId,
         customPrompt,
-        geminiApiKey
+        apiKey,
+        apiEndpoint,
+        apiModel
       );
 
       setActiveNote(generatedNote);
@@ -165,6 +190,7 @@ export function App() {
       <main className="studio-grid">
         {/* Left Column: Audio Recording & Speech-to-Text Transcript */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <TextNoteInput onSourceReady={handleTextSourceReady} />
           <AudioRecorder
             onRecordingComplete={handleRecordingComplete}
             onSelectSample={handleSelectSample}
@@ -201,10 +227,16 @@ export function App() {
       <ApiKeyModal
         isOpen={isApiKeyModalOpen}
         onClose={() => setIsApiKeyModalOpen(false)}
-        apiKey={geminiApiKey}
-        onSaveApiKey={(key) => {
-          setGeminiApiKey(key);
-          saveGeminiApiKey(key);
+        apiKey={apiKey}
+        apiEndpoint={apiEndpoint}
+        apiModel={apiModel}
+        onSaveApiConfig={(key, endpoint, model) => {
+          setApiKey(key);
+          setApiEndpoint(endpoint);
+          setApiModel(model);
+          saveApiKey(key);
+          saveApiEndpoint(endpoint);
+          saveApiModel(model);
         }}
       />
 

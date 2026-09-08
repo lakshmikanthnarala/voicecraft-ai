@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { CustomNote, ActionItem } from '../types';
 import { MindMapView } from './MindMapView';
-import { exportNoteAsMarkdown, exportNoteAsText, printFormattedNote, copyToClipboard } from '../services/exportService';
+import { exportNoteAsMarkdown, exportNoteAsText, exportNoteAsPdf, copyToClipboard } from '../services/exportService';
 
 interface NoteEditorProps {
   note: CustomNote | null;
@@ -117,13 +117,13 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
           </button>
 
           <button
-            onClick={() => printFormattedNote(note)}
+            onClick={() => exportNoteAsPdf(note)}
             className="btn btn-secondary"
             style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
-            title="Print or Save as PDF Report"
+            title="Download or Save as PDF"
           >
             <Printer className="w-4 h-4 text-purple-400" />
-            <span>PDF Print</span>
+            <span>PDF</span>
           </button>
         </div>
       </div>

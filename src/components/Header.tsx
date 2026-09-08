@@ -62,11 +62,11 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* Gemini API Key Modal Trigger */}
+        {/* AI Provider Configuration Trigger */}
         <button
           onClick={onOpenApiKeyModal}
           className="btn btn-secondary"
-          title="Configure Gemini API Key for Advanced LLM Generation"
+          title="Configure an API key, endpoint, and model for advanced LLM generation"
         >
           <Key className="w-4 h-4 text-amber-400" />
           <span>API Key</span>

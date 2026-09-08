@@ -6,13 +6,22 @@ export async function generateCustomNote(
   transcript: string,
   templateId: NoteTemplateId,
   customPrompt?: string,
-  geminiApiKey?: string
+  apiKey?: string,
+  apiEndpoint?: string,
+  apiModel?: string
 ): Promise<CustomNote> {
 
-  // If user provided a Gemini API Key, use LLM generation
-  if (geminiApiKey && geminiApiKey.trim().length > 0) {
+  // Use the configured provider when a key is available; the local engine remains the fallback.
+  if (apiKey && apiKey.trim().length > 0) {
     try {
-      const llmResult = await fetchGeminiNote(transcript, templateId, customPrompt, geminiApiKey);
+      const llmResult = await fetchLlmNote(
+        transcript,
+        templateId,
+        customPrompt,
+        apiKey,
+        apiEndpoint,
+        apiModel
+      );
       if (llmResult) {
         return {
           id: 'note-' + Date.now(),
@@ -30,7 +39,7 @@ export async function generateCustomNote(
         };
       }
     } catch (e) {
-      console.warn('Gemini API call failed, falling back to local NLP engine:', e);
+      console.warn('Configured API call failed, falling back to local NLP engine:', e);
     }
   }
 
@@ -247,12 +256,14 @@ ${transcript}
   };
 }
 
-// Optional Gemini LLM Integration
-async function fetchGeminiNote(
+// Supports Gemini and providers exposing an OpenAI-compatible chat completions endpoint.
+async function fetchLlmNote(
   transcript: string,
   templateId: NoteTemplateId,
   customPrompt: string | undefined,
-  apiKey: string
+  apiKey: string,
+  apiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+  apiModel = 'gemini-1.5-flash'
 ): Promise<{ summary: string; contentMarkdown: string; actionItems?: ActionItem[]; flashcards?: Flashcard[]; mindMap?: MindMapNode[]; tags: string[] } | null> {
   const promptText = `You are an expert AI note assistant. Transform the following audio transcript into a structured note.
 
@@ -270,22 +281,38 @@ Format your output as a JSON object with this exact schema:
 }
 Return ONLY valid raw JSON without markdown code blocks.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const isGeminiEndpoint = apiEndpoint.includes('generativelanguage.googleapis.com');
+  const url = isGeminiEndpoint
+    ? `${apiEndpoint.replace(/\/$/, '')}?key=${encodeURIComponent(apiKey)}`
+    : apiEndpoint;
+  const body = isGeminiEndpoint
+    ? { contents: [{ parts: [{ text: promptText }] }] }
+    : {
+      model: apiModel,
+      messages: [
+        { role: 'system', content: 'You are an expert AI note assistant.' },
+        { role: 'user', content: promptText }
+      ],
+      response_format: { type: 'json_object' }
+    };
   
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: promptText }] }]
-    })
+    headers: {
+      'Content-Type': 'application/json',
+      ...(isGeminiEndpoint ? {} : { Authorization: `Bearer ${apiKey}` })
+    },
+    body: JSON.stringify(body)
   });
 
   if (!response.ok) {
-    throw new Error(`Gemini API error status: ${response.status}`);
+    throw new Error(`Configured API error status: ${response.status}`);
   }
 
   const data = await response.json();
-  const textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const textOutput = isGeminiEndpoint
+    ? data?.candidates?.[0]?.content?.parts?.[0]?.text
+    : data?.choices?.[0]?.message?.content;
   if (!textOutput) return null;
 
   const cleanJsonText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -295,6 +322,6 @@ Return ONLY valid raw JSON without markdown code blocks.`;
     summary: parsed.summary || 'AI generated note summary.',
     contentMarkdown: parsed.contentMarkdown || textOutput,
     actionItems: parsed.actionItems,
-    tags: parsed.tags || ['GeminiAI']
+    tags: parsed.tags || ['AI Generated']
   };
 }
