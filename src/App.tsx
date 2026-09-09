@@ -88,11 +88,20 @@ export function App() {
     setActiveNote(null);
     persistRecording(recording);
 
-    try {
-      const transcribedText = await mlModelEngine.transcribeAudioML(recording.audioUrl || recording.transcript);
-      if (!transcribedText || !transcribedText.trim()) return;
+    const existingTranscript = recording.transcript?.trim() || '';
+    const looksLikePlaceholderTranscript = /Audio recorded successfully|No spoken speech detected|ML Whisper Model|Speech processing complete/i.test(existingTranscript);
 
+    try {
+      if (!recording.audioUrl || !recording.audioUrl.trim() || !looksLikePlaceholderTranscript) {
+        return;
+      }
+
+      const transcribedText = await mlModelEngine.transcribeAudioML(recording.audioUrl);
       const cleaned = transcribedText.trim();
+      if (!cleaned || /ML Whisper Model|Speech processing complete|transcription completed/i.test(cleaned)) {
+        return;
+      }
+
       const updatedRecording: AudioRecording = {
         ...recording,
         transcript: cleaned,

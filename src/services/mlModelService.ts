@@ -132,19 +132,19 @@ class MLModelEngine {
         this.metrics.lastInferenceTimeMs = Math.round(t1 - t0);
         this.metrics.speechModelStatus = 'ready';
         this.notify();
-        return output.text || 'ML Whisper transcription completed.';
+        return output.text || '';
       }
     } catch (e) {
       console.warn('ML Speech Inference fallback:', e);
     }
 
-    // High performance ML tensor simulation fallback
-    await new Promise(r => setTimeout(r, 650));
+    // When the speech model is unavailable, keep the transcript empty instead of pretending
+    // that a real transcription succeeded.
     const t1 = performance.now();
     this.metrics.lastInferenceTimeMs = Math.round(t1 - t0);
     this.metrics.speechModelStatus = 'ready';
     this.notify();
-    return 'ML Whisper Model (WASM ONNX): Speech processing complete with 99.2% confidence.';
+    return '';
   }
 
   // Run Text Summarization & Note Extraction ML Model Inference
