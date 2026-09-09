@@ -32,7 +32,7 @@ const TEMPLATES: NoteTemplate[] = [
   },
   {
     id: 'possible-questions',
-    name: 'Possible Asked Questions',
+    name: 'Questions',
     description: 'Likely questions and answers from the transcript.',
     iconName: 'HelpCircle',
     color: '#06b6d4'

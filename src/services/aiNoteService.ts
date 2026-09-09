@@ -52,7 +52,7 @@ function getTemplateTitle(templateId: NoteTemplateId): string {
     case 'summarized': return 'Summarized';
     case 'flash-cards': return 'Flash Cards';
     case 'notes': return 'Notes';
-    case 'possible-questions': return 'Possible Asked Questions';
+    case 'possible-questions': return 'Questions';
     default: return 'Note';
   }
 }
