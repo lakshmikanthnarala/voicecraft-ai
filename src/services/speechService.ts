@@ -81,6 +81,7 @@ export class SpeechRecorderService {
   private recordingStartTimestamp = 0;
   private pauseStartedAt = 0;
   private pausedDurationMs = 0;
+  private recognitionRestartScheduled = false;
 
   public isRecording = false;
   public isPaused = false;
@@ -106,9 +107,10 @@ export class SpeechRecorderService {
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           const result = event.results[i];
           if (result.isFinal) {
-            finalChunk += result[0].transcript + ' ';
+            const transcript = result[0]?.transcript ?? '';
+            finalChunk += transcript + ' ';
           } else {
-            currentInterim += result[0].transcript;
+            currentInterim += result[0]?.transcript ?? '';
           }
         }
 
@@ -122,10 +124,42 @@ export class SpeechRecorderService {
         }
       };
 
+      this.recognition.onend = () => {
+        if (!this.isRecording || this.isPaused) return;
+
+        this.restartRecognition();
+      };
+
       this.recognition.onerror = (event: any) => {
         console.warn('Speech recognition notice:', event.error);
+
+        if (this.isRecording && !this.isPaused && ['no-speech', 'audio-capture', 'aborted'].includes(event.error)) {
+          this.restartRecognition();
+        }
       };
     }
+  }
+
+  private restartRecognition(): void {
+    if (!this.recognition || !this.isRecording || this.isPaused || this.recognitionRestartScheduled) {
+      return;
+    }
+
+    this.recognitionRestartScheduled = true;
+
+    window.setTimeout(() => {
+      this.recognitionRestartScheduled = false;
+
+      if (!this.recognition || !this.isRecording || this.isPaused) {
+        return;
+      }
+
+      try {
+        this.recognition.start();
+      } catch (e) {
+        console.debug('Speech recognition restart attempted while already active:', e);
+      }
+    }, 150);
   }
 
   public setCallbacks(
@@ -178,6 +212,10 @@ export class SpeechRecorderService {
 
       this.mediaRecorder.start(250);
 
+      this.isRecording = true;
+      this.isPaused = false;
+      this.recognitionRestartScheduled = false;
+
       if (this.recognition) {
         try {
           this.recognition.start();
@@ -186,8 +224,6 @@ export class SpeechRecorderService {
         }
       }
 
-      this.isRecording = true;
-      this.isPaused = false;
       return true;
     } catch (err) {
       console.error('Error starting audio recording:', err);
@@ -200,6 +236,7 @@ export class SpeechRecorderService {
 
     this.isPaused = true;
     this.pauseStartedAt = Date.now();
+    this.recognitionRestartScheduled = false;
 
     if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
       this.mediaRecorder.pause();
@@ -220,6 +257,7 @@ export class SpeechRecorderService {
     this.isPaused = false;
     this.pausedDurationMs += Date.now() - this.pauseStartedAt;
     this.pauseStartedAt = 0;
+    this.recognitionRestartScheduled = false;
 
     if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
       this.mediaRecorder.resume();
@@ -281,6 +319,7 @@ export class SpeechRecorderService {
 
       this.isRecording = false;
       this.isPaused = false;
+      this.recognitionRestartScheduled = false;
 
       if (this.animFrameId) {
         cancelAnimationFrame(this.animFrameId);
