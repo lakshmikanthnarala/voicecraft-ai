@@ -11,14 +11,15 @@ import { ApiKeyModal } from './components/ApiKeyModal';
 import { MLModelDashboard } from './components/MLModelDashboard';
 
 import { AudioRecording, CustomNote, NoteTemplateId, SampleRecording, ThemeMode } from './types';
-import { SAMPLE_RECORDINGS } from './services/speechService';
+import { SAMPLE_RECORDINGS, isTranscriptLikelyLowQuality } from './services/speechService';
 import { generateCustomNote } from './services/aiNoteService';
 import { mlModelEngine } from './services/mlModelService';
 import { 
   getRecordingsFromStorage, saveRecordingsToStorage, 
   getNotesFromStorage, saveNotesToStorage, 
   getThemeMode, saveThemeMode, 
-  getApiKey, saveApiKey, getApiEndpoint, saveApiEndpoint, getApiModel, saveApiModel
+  getApiKey, saveApiKey, getApiEndpoint, saveApiEndpoint, getApiModel, saveApiModel,
+  getSpeechLanguage, saveSpeechLanguage
 } from './services/storageService';
 
 export function App() {
@@ -35,6 +36,7 @@ export function App() {
   const [apiKey, setApiKey] = useState('');
   const [apiEndpoint, setApiEndpoint] = useState('');
   const [apiModel, setApiModel] = useState('');
+  const [speechLanguage, setSpeechLanguage] = useState(getSpeechLanguage());
 
   // Initial setup: Load theme, storage notes, and load default sample recording
   useEffect(() => {
@@ -48,9 +50,16 @@ export function App() {
     const storedRecordings = getRecordingsFromStorage();
     setSavedRecordings(storedRecordings);
 
-    setApiKey(getApiKey());
-    setApiEndpoint(getApiEndpoint());
-    setApiModel(getApiModel());
+    const savedApiKey = getApiKey();
+    const savedApiEndpoint = getApiEndpoint();
+    const savedApiModel = getApiModel();
+
+    const savedSpeechLanguage = getSpeechLanguage();
+    setApiKey(savedApiKey);
+    setApiEndpoint(savedApiEndpoint);
+    setApiModel(savedApiModel);
+    setSpeechLanguage(savedSpeechLanguage);
+    mlModelEngine.configureAudio(savedApiKey, savedApiModel, savedApiEndpoint, savedSpeechLanguage);
 
     if (storedRecordings.length > 0) {
       setActiveRecording(storedRecordings[0]);
@@ -77,6 +86,13 @@ export function App() {
     saveThemeMode(newTheme);
   };
 
+  const handleSpeechLanguageChange = (language: string) => {
+    const normalizedLanguage = language || 'en-US';
+    setSpeechLanguage(normalizedLanguage);
+    saveSpeechLanguage(normalizedLanguage);
+    mlModelEngine.configureAudio(apiKey, apiModel, apiEndpoint, normalizedLanguage);
+  };
+
   const persistRecording = (recording: AudioRecording) => {
     const updatedList = [recording, ...savedRecordings.filter(r => r.id !== recording.id)];
     setSavedRecordings(updatedList);
@@ -92,26 +108,57 @@ export function App() {
     const looksLikePlaceholderTranscript = /Audio recorded successfully|No spoken speech detected|ML Whisper Model|Speech processing complete/i.test(existingTranscript);
 
     try {
-      if (!recording.audioUrl || !recording.audioUrl.trim() || !looksLikePlaceholderTranscript) {
+      if (!recording.audioUrl || !recording.audioUrl.trim()) {
         return;
       }
 
-      const transcribedText = await mlModelEngine.transcribeAudioML(recording.audioUrl);
-      const cleaned = transcribedText.trim();
-      if (!cleaned || /ML Whisper Model|Speech processing complete|transcription completed/i.test(cleaned)) {
+      const previewTranscript = existingTranscript && !looksLikePlaceholderTranscript ? existingTranscript : '';
+      const whisperTranscript = await transcribeAudioRecording(recording.audioUrl, recording.duration);
+      const cleanedWhisper = whisperTranscript.trim();
+      if (!cleanedWhisper || /ML Whisper Model|Speech processing complete|transcription completed/i.test(cleanedWhisper)) {
+        if (previewTranscript) {
+          const updatedRecording: AudioRecording = {
+            ...recording,
+            transcript: previewTranscript,
+            segments: [{
+              id: `seg-${Date.now()}`,
+              speaker: 'Live Transcript',
+              startTime: 0,
+              endTime: recording.duration,
+              text: previewTranscript
+            }]
+          };
+          setActiveRecording(updatedRecording);
+          persistRecording(updatedRecording);
+        }
         return;
       }
+
+      const finalTranscript = (() => {
+        if (!previewTranscript) {
+          return cleanedWhisper;
+        }
+
+        const previewQuality = isTranscriptLikelyLowQuality(previewTranscript, recording.duration) ? 0 : 1;
+        const whisperQuality = isTranscriptLikelyLowQuality(cleanedWhisper, recording.duration) ? 0 : 1;
+
+        if (previewQuality === whisperQuality) {
+          return cleanedWhisper.length >= previewTranscript.length ? cleanedWhisper : previewTranscript;
+        }
+
+        return whisperQuality > previewQuality ? cleanedWhisper : previewTranscript;
+      })();
 
       const updatedRecording: AudioRecording = {
         ...recording,
-        transcript: cleaned,
+        transcript: finalTranscript,
         segments: [
           {
             id: `seg-${Date.now()}`,
-            speaker: 'Auto Transcript',
+            speaker: finalTranscript === cleanedWhisper ? 'Auto Transcript' : 'Live Transcript',
             startTime: 0,
             endTime: recording.duration,
-            text: cleaned
+            text: finalTranscript
           }
         ]
       };
@@ -174,6 +221,48 @@ export function App() {
     setActiveRecording(recording);
     setActiveNote(null);
     persistRecording(recording);
+  };
+
+  const transcribeAudioRecording = async (audioUrl: string | undefined, durationSeconds: number): Promise<string> => {
+    if (!audioUrl || !audioUrl.trim()) return '';
+
+    const firstPass = await mlModelEngine.transcribeAudioML(audioUrl, apiKey, apiModel, speechLanguage);
+    const cleanedFirstPass = firstPass.trim();
+    if (!cleanedFirstPass) return '';
+
+    if (!isTranscriptLikelyLowQuality(cleanedFirstPass, durationSeconds)) {
+      return cleanedFirstPass;
+    }
+
+    const secondPass = await mlModelEngine.transcribeAudioML(audioUrl, apiKey, apiModel, speechLanguage);
+    const cleanedSecondPass = secondPass.trim();
+    if (cleanedSecondPass && !isTranscriptLikelyLowQuality(cleanedSecondPass, durationSeconds)) {
+      return cleanedSecondPass;
+    }
+
+    return cleanedFirstPass;
+  };
+
+  const handleRetryTranscription = async () => {
+    if (!activeRecording || !activeRecording.audioUrl) return;
+
+    const transcribedText = await transcribeAudioRecording(activeRecording.audioUrl, activeRecording.duration);
+    if (!transcribedText) return;
+
+    const updatedRecording: AudioRecording = {
+      ...activeRecording,
+      transcript: transcribedText,
+      segments: [{
+        id: `seg-retry-${Date.now()}`,
+        speaker: 'Auto Transcript',
+        startTime: 0,
+        endTime: activeRecording.duration,
+        text: transcribedText
+      }]
+    };
+
+    setActiveRecording(updatedRecording);
+    persistRecording(updatedRecording);
   };
 
   const handleGenerateNote = async (templateId: NoteTemplateId, customPrompt?: string) => {
@@ -254,10 +343,13 @@ export function App() {
           <AudioRecorder
             onRecordingComplete={handleRecordingComplete}
             onSelectSample={handleSelectSample}
+            speechLanguage={speechLanguage}
+            onSpeechLanguageChange={handleSpeechLanguageChange}
           />
           <TranscriptViewer
             recording={activeRecording}
             onUpdateTranscript={handleUpdateTranscript}
+            onRetryTranscription={handleRetryTranscription}
           />
         </div>
 
@@ -297,6 +389,7 @@ export function App() {
           saveApiKey(key);
           saveApiEndpoint(endpoint);
           saveApiModel(model);
+          mlModelEngine.configureAudio(key, model, endpoint);
         }}
       />
 

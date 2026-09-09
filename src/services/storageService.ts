@@ -6,6 +6,7 @@ const STORAGE_KEY_THEME = 'voicecraft_theme';
 const STORAGE_KEY_API_KEY = 'voicecraft_api_key';
 const STORAGE_KEY_API_ENDPOINT = 'voicecraft_api_endpoint';
 const STORAGE_KEY_API_MODEL = 'voicecraft_api_model';
+const STORAGE_KEY_SPEECH_LANGUAGE = 'voicecraft_speech_language';
 
 export function saveRecordingsToStorage(recordings: AudioRecording[]): void {
   try {
@@ -74,4 +75,12 @@ export function saveApiModel(model: string): void {
 
 export function getApiModel(): string {
   return localStorage.getItem(STORAGE_KEY_API_MODEL) || 'gemini-1.5-flash';
+}
+
+export function saveSpeechLanguage(language: string): void {
+  localStorage.setItem(STORAGE_KEY_SPEECH_LANGUAGE, language);
+}
+
+export function getSpeechLanguage(): string {
+  return localStorage.getItem(STORAGE_KEY_SPEECH_LANGUAGE) || 'en-US';
 }

@@ -16,6 +16,10 @@ export interface MLModelMetrics {
 class MLModelEngine {
   private whisperPipeline: any = null;
   private summarizerPipeline: any = null;
+  private configuredAudioApiKey = '';
+  private configuredAudioModel = 'whisper-1';
+  private configuredAudioEndpoint = 'https://api.openai.com/v1/audio/transcriptions';
+  private configuredAudioLanguage = 'en-US';
 
   public metrics: MLModelMetrics = {
     speechModelName: 'OpenAI Whisper-Tiny (ONNX)',
@@ -42,6 +46,15 @@ class MLModelEngine {
 
   private notify() {
     this.listeners.forEach(l => l(this.metrics));
+  }
+
+  public configureAudio(apiKey?: string, modelName?: string, apiEndpoint?: string, language?: string) {
+    this.configuredAudioApiKey = (apiKey || '').trim();
+    this.configuredAudioModel = (modelName || '').trim() || 'whisper-1';
+    this.configuredAudioLanguage = (language || '').trim() || 'en-US';
+    if (apiEndpoint && apiEndpoint.trim()) {
+      this.configuredAudioEndpoint = apiEndpoint.trim();
+    }
   }
 
   // Pre-load ML Models into Browser WASM Memory
@@ -120,10 +133,51 @@ class MLModelEngine {
   }
 
   // Run Speech Recognition ML Model Inference
-  public async transcribeAudioML(audioUrl: string | Blob): Promise<string> {
+  public async transcribeAudioML(audioUrl: string | Blob, apiKeyOverride?: string, modelOverride?: string, languageOverride?: string): Promise<string> {
     const t0 = performance.now();
     this.metrics.speechModelStatus = 'running';
     this.notify();
+
+    const resolvedApiKey = (apiKeyOverride ?? this.configuredAudioApiKey).trim();
+    const resolvedModel = (modelOverride ?? this.configuredAudioModel).trim() || 'whisper-1';
+    const resolvedLanguage = (languageOverride ?? this.configuredAudioLanguage).trim() || 'en-US';
+
+    if (resolvedApiKey) {
+      try {
+        const formData = new FormData();
+        const source = typeof audioUrl === 'string'
+          ? await fetch(audioUrl).then(r => r.blob())
+          : audioUrl;
+        const fileName = typeof audioUrl === 'string' ? audioUrl.split('/').pop() || 'audio.webm' : 'audio.webm';
+        formData.append('file', source, fileName);
+        formData.append('model', resolvedModel);
+        formData.append('language', resolvedLanguage);
+
+        const response = await fetch(this.configuredAudioEndpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resolvedApiKey}`
+          },
+          body: formData
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data?.text || data?.transcript || data?.result || '';
+          if (text) {
+            const t1 = performance.now();
+            this.metrics.lastInferenceTimeMs = Math.round(t1 - t0);
+            this.metrics.speechModelStatus = 'ready';
+            this.notify();
+            return String(text);
+          }
+        } else {
+          console.warn('Configured audio transcription API rejected the request:', response.status);
+        }
+      } catch (e) {
+        console.warn('Configured audio transcription API unavailable, falling back to local ML model:', e);
+      }
+    }
 
     try {
       if (this.whisperPipeline) {

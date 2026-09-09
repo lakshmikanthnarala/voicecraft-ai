@@ -6,11 +6,13 @@ import { cleanFillerWords, SAMPLE_RECORDINGS } from '../services/speechService';
 interface TranscriptViewerProps {
   recording: AudioRecording | null;
   onUpdateTranscript: (newTranscript: string) => void;
+  onRetryTranscription?: () => void;
 }
 
 export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   recording,
-  onUpdateTranscript
+  onUpdateTranscript,
+  onRetryTranscription
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -60,6 +62,18 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {recording.audioUrl && onRetryTranscription && (
+            <button
+              onClick={onRetryTranscription}
+              className="btn btn-secondary"
+              style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
+              title="Retry the transcription with a second pass"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Retry</span>
+            </button>
+          )}
+
           <button
             onClick={handleCleanFillers}
             className="btn btn-secondary"

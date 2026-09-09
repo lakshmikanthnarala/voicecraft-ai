@@ -1,16 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Square, Upload, Play, Pause, Sparkles, Volume2, Clock, AlertCircle } from 'lucide-react';
 import { SpeechRecorderService, SAMPLE_RECORDINGS, isSpeechRecognitionSupported } from '../services/speechService';
+import { getSpeechLanguage, saveSpeechLanguage } from '../services/storageService';
 import { AudioRecording, SampleRecording } from '../types';
 
 interface AudioRecorderProps {
   onRecordingComplete: (recording: AudioRecording) => void;
   onSelectSample: (sample: SampleRecording) => void;
+  speechLanguage?: string;
+  onSpeechLanguageChange?: (language: string) => void;
 }
 
 export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   onRecordingComplete,
-  onSelectSample
+  onSelectSample,
+  speechLanguage: controlledSpeechLanguage,
+  onSpeechLanguageChange
 }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -18,6 +23,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [audioLevel, setAudioLevel] = useState(0);
   const [customTitle, setCustomTitle] = useState('');
   const [browserSupported, setBrowserSupported] = useState(true);
+  const [speechLanguage, setSpeechLanguage] = useState(controlledSpeechLanguage || getSpeechLanguage());
 
   const recorderRef = useRef<SpeechRecorderService | null>(null);
   const timerRef = useRef<any>(null);
@@ -26,10 +32,23 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   useEffect(() => {
     setBrowserSupported(isSpeechRecognitionSupported());
     recorderRef.current = new SpeechRecorderService();
+    recorderRef.current.setLanguage(speechLanguage);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (controlledSpeechLanguage) {
+      setSpeechLanguage(controlledSpeechLanguage);
+    }
+  }, [controlledSpeechLanguage]);
+
+  useEffect(() => {
+    recorderRef.current?.setLanguage(speechLanguage);
+    saveSpeechLanguage(speechLanguage);
+    onSpeechLanguageChange?.(speechLanguage);
+  }, [speechLanguage, onSpeechLanguageChange]);
 
   // Draw Audio Waveform Spectrum onto Canvas
   useEffect(() => {
@@ -205,7 +224,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       )}
 
       {/* Title Input Field */}
-      <div style={{ marginBottom: '1.25rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 180px', gap: '0.75rem', marginBottom: '1.25rem' }}>
         <input
           type="text"
           placeholder="Note / Session Title (Optional e.g., Monday Project Sync)"
@@ -223,6 +242,33 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
             outline: 'none'
           }}
         />
+
+        <select
+          value={speechLanguage}
+          onChange={(e) => setSpeechLanguage(e.target.value)}
+          aria-label="Speech recognition language"
+          style={{
+            width: '100%',
+            padding: '0.65rem 0.75rem',
+            borderRadius: 'var(--radius-md)',
+            background: 'rgba(0, 0, 0, 0.25)',
+            border: '1px solid var(--bg-card-border)',
+            color: 'var(--text-primary)',
+            fontSize: '0.85rem',
+            outline: 'none'
+          }}
+        >
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="es-ES">Español</option>
+          <option value="fr-FR">Français</option>
+          <option value="de-DE">Deutsch</option>
+          <option value="pt-BR">Português</option>
+          <option value="it-IT">Italiano</option>
+          <option value="ja-JP">日本語</option>
+          <option value="ko-KR">한국어</option>
+          <option value="zh-CN">中文</option>
+        </select>
       </div>
 
       {/* Main Waveform Canvas & Controls Center */}
