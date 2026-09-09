@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { FileText, Sparkles, Upload } from 'lucide-react';
+import { extractTextFromFile } from '../services/documentParser';
 
 interface TextNoteInputProps {
   onSourceReady: (title: string, text: string) => void;
@@ -22,12 +23,21 @@ export const TextNoteInput: React.FC<TextNoteInputProps> = ({ onSourceReady }) =
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const text = await file.text();
-    if (!text.trim()) return;
+    try {
+      const text = await extractTextFromFile(file);
+      if (!text.trim()) {
+        alert('The uploaded file does not contain any readable text.');
+        event.target.value = '';
+        return;
+      }
 
-    setFileName(file.name);
-    onSourceReady(file.name.replace(/\.[^/.]+$/, '') || 'Uploaded Notes', text);
-    event.target.value = '';
+      setFileName(file.name);
+      onSourceReady(file.name.replace(/\.[^/.]+$/, '') || 'Uploaded Notes', text);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to read this file type.');
+    } finally {
+      event.target.value = '';
+    }
   };
 
   return (
@@ -37,7 +47,7 @@ export const TextNoteInput: React.FC<TextNoteInputProps> = ({ onSourceReady }) =
         <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Start with a topic or notes</h2>
       </div>
       <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-        Enter anything you want to learn or upload a text/Markdown note to transform it.
+        Enter anything you want to learn or upload a note, PDF, Word, or PowerPoint file to transform it.
       </p>
 
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -78,9 +88,15 @@ export const TextNoteInput: React.FC<TextNoteInputProps> = ({ onSourceReady }) =
         <Upload className="w-5 h-5 text-cyan-400 flex-shrink-0" />
         <div style={{ overflow: 'hidden' }}>
           <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{fileName || 'Upload a notes file'}</div>
-          <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Plain text or Markdown (.txt, .md)</div>
+          <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Text, Markdown, PDF, Word, and PowerPoint files</div>
         </div>
-        <input ref={fileInputRef} type="file" accept=".txt,.md,text/plain,text/markdown" onChange={handleFileUpload} style={{ display: 'none' }} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".txt,.md,.pdf,.doc,.docx,.ppt,.pptx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+          onChange={handleFileUpload}
+          style={{ display: 'none' }}
+        />
       </label>
     </div>
   );

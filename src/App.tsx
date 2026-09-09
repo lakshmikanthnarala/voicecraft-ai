@@ -26,6 +26,7 @@ export function App() {
   const [activeRecording, setActiveRecording] = useState<AudioRecording | null>(null);
   const [activeNote, setActiveNote] = useState<CustomNote | null>(null);
   const [savedNotes, setSavedNotes] = useState<CustomNote[]>([]);
+  const [savedRecordings, setSavedRecordings] = useState<AudioRecording[]>([]);
   const [isGeneratingNote, setIsGeneratingNote] = useState(false);
 
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
@@ -44,11 +45,18 @@ export function App() {
     const notesFromStorage = getNotesFromStorage();
     setSavedNotes(notesFromStorage);
 
+    const storedRecordings = getRecordingsFromStorage();
+    setSavedRecordings(storedRecordings);
+
     setApiKey(getApiKey());
     setApiEndpoint(getApiEndpoint());
     setApiModel(getApiModel());
 
-    // Auto load first sample recording so user sees content immediately
+    if (storedRecordings.length > 0) {
+      setActiveRecording(storedRecordings[0]);
+      return;
+    }
+
     if (SAMPLE_RECORDINGS.length > 0) {
       const defaultSample = SAMPLE_RECORDINGS[0];
       const rec: AudioRecording = {
@@ -69,13 +77,41 @@ export function App() {
     saveThemeMode(newTheme);
   };
 
+  const persistRecording = (recording: AudioRecording) => {
+    const updatedList = [recording, ...savedRecordings.filter(r => r.id !== recording.id)];
+    setSavedRecordings(updatedList);
+    saveRecordingsToStorage(updatedList);
+  };
+
   const handleRecordingComplete = async (recording: AudioRecording) => {
     setActiveRecording(recording);
     setActiveNote(null);
-    // Run ML Speech Model inference call
+    persistRecording(recording);
+
     try {
-      await mlModelEngine.transcribeAudioML(recording.audioUrl || recording.transcript);
-    } catch (e) {}
+      const transcribedText = await mlModelEngine.transcribeAudioML(recording.audioUrl || recording.transcript);
+      if (!transcribedText || !transcribedText.trim()) return;
+
+      const cleaned = transcribedText.trim();
+      const updatedRecording: AudioRecording = {
+        ...recording,
+        transcript: cleaned,
+        segments: [
+          {
+            id: `seg-${Date.now()}`,
+            speaker: 'Auto Transcript',
+            startTime: 0,
+            endTime: recording.duration,
+            text: cleaned
+          }
+        ]
+      };
+
+      setActiveRecording(updatedRecording);
+      persistRecording(updatedRecording);
+    } catch (e) {
+      console.error('Audio transcription failed:', e);
+    }
   };
 
   const handleSelectSample = (sample: SampleRecording) => {
@@ -89,14 +125,26 @@ export function App() {
     };
     setActiveRecording(rec);
     setActiveNote(null);
+    persistRecording(rec);
   };
 
   const handleUpdateTranscript = (newTranscript: string) => {
     if (!activeRecording) return;
-    setActiveRecording({
+    const updatedRecording = {
       ...activeRecording,
-      transcript: newTranscript
-    });
+      transcript: newTranscript,
+      segments: activeRecording.segments.length > 0
+        ? activeRecording.segments.map((segment, i) => i === 0 ? { ...segment, text: newTranscript } : segment)
+        : [{
+            id: 'seg-updated-1',
+            speaker: 'Edited Transcript',
+            startTime: 0,
+            endTime: activeRecording.duration,
+            text: newTranscript
+          }]
+    };
+    setActiveRecording(updatedRecording);
+    persistRecording(updatedRecording);
   };
 
   const handleTextSourceReady = (title: string, text: string) => {
@@ -116,6 +164,7 @@ export function App() {
     };
     setActiveRecording(recording);
     setActiveNote(null);
+    persistRecording(recording);
   };
 
   const handleGenerateNote = async (templateId: NoteTemplateId, customPrompt?: string) => {

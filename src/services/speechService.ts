@@ -78,6 +78,9 @@ export class SpeechRecorderService {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private animFrameId: number | null = null;
+  private recordingStartTimestamp = 0;
+  private pauseStartedAt = 0;
+  private pausedDurationMs = 0;
 
   public isRecording = false;
   public isPaused = false;
@@ -139,9 +142,18 @@ export class SpeechRecorderService {
       this.interimTranscript = '';
       this.audioChunks = [];
       this.startTime = Date.now();
+      this.recordingStartTimestamp = Date.now();
+      this.pauseStartedAt = 0;
+      this.pausedDurationMs = 0;
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
       // Setup Web Audio API Analyser for Waveform visualizer
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const source = this.audioContext.createMediaStreamSource(stream);
@@ -151,8 +163,13 @@ export class SpeechRecorderService {
 
       this.monitorAudioLevel();
 
-      // Setup MediaRecorder
-      this.mediaRecorder = new MediaRecorder(stream);
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+
+      this.mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           this.audioChunks.push(event.data);
@@ -161,9 +178,12 @@ export class SpeechRecorderService {
 
       this.mediaRecorder.start(250);
 
-      // Start SpeechRecognition
       if (this.recognition) {
-        this.recognition.start();
+        try {
+          this.recognition.start();
+        } catch (e) {
+          console.warn('Speech recognition already active:', e);
+        }
       }
 
       this.isRecording = true;
@@ -175,12 +195,58 @@ export class SpeechRecorderService {
     }
   }
 
+  public pauseRecording(): boolean {
+    if (!this.isRecording || this.isPaused) return false;
+
+    this.isPaused = true;
+    this.pauseStartedAt = Date.now();
+
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.mediaRecorder.pause();
+    }
+
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch (e) {}
+    }
+
+    return true;
+  }
+
+  public resumeRecording(): boolean {
+    if (!this.isRecording || !this.isPaused) return false;
+
+    this.isPaused = false;
+    this.pausedDurationMs += Date.now() - this.pauseStartedAt;
+    this.pauseStartedAt = 0;
+
+    if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
+      this.mediaRecorder.resume();
+    }
+
+    if (this.recognition) {
+      try {
+        this.recognition.start();
+      } catch (e) {}
+    }
+
+    return true;
+  }
+
+  public getElapsedSeconds(): number {
+    if (!this.recordingStartTimestamp) return 0;
+    const now = this.isPaused && this.pauseStartedAt ? this.pauseStartedAt : Date.now();
+    const activeMs = now - this.recordingStartTimestamp - this.pausedDurationMs;
+    return Math.max(0, Math.round(activeMs / 1000));
+  }
+
   private monitorAudioLevel() {
     if (!this.analyser) return;
     const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
     const update = () => {
-      if (!this.isRecording || !this.analyser) return;
+      if (!this.isRecording || this.isPaused || !this.analyser) return;
       this.analyser.getByteFrequencyData(dataArray);
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) {
@@ -195,9 +261,26 @@ export class SpeechRecorderService {
     update();
   }
 
+  private async blobToDataUrl(blob: Blob): Promise<string> {
+    if (!blob || blob.size === 0) return '';
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Failed to serialize recorded audio'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
   public stopRecording(): Promise<{ audioUrl: string; transcript: string; duration: number }> {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
+      if (this.isPaused && this.pauseStartedAt) {
+        this.pausedDurationMs += Date.now() - this.pauseStartedAt;
+        this.pauseStartedAt = 0;
+      }
+
       this.isRecording = false;
+      this.isPaused = false;
 
       if (this.animFrameId) {
         cancelAnimationFrame(this.animFrameId);
@@ -209,32 +292,30 @@ export class SpeechRecorderService {
         } catch (e) {}
       }
 
-      const duration = Math.round((Date.now() - this.startTime) / 1000);
+      const duration = this.getElapsedSeconds();
+      const finalize = async () => {
+        const audioBlob = new Blob(this.audioChunks, {
+          type: this.mediaRecorder?.mimeType || 'audio/webm'
+        });
+        const audioUrl = audioBlob.size > 0 ? await this.blobToDataUrl(audioBlob) : '';
 
-      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-        this.mediaRecorder.onstop = () => {
-          const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-          const audioUrl = URL.createObjectURL(audioBlob);
-          
-          if (this.audioContext) {
-            this.audioContext.close();
-          }
+        if (this.audioContext) {
+          this.audioContext.close();
+        }
 
-          const fullTranscript = (this.transcript + ' ' + this.interimTranscript).trim();
-          resolve({
-            audioUrl,
-            transcript: fullTranscript || 'Audio recorded successfully. (No spoken speech detected).',
-            duration
-          });
-        };
-        this.mediaRecorder.stop();
-      } else {
         const fullTranscript = (this.transcript + ' ' + this.interimTranscript).trim();
         resolve({
-          audioUrl: '',
-          transcript: fullTranscript || 'Audio recorded successfully.',
+          audioUrl,
+          transcript: fullTranscript || 'Audio recorded successfully. (No spoken speech detected).',
           duration
         });
+      };
+
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        this.mediaRecorder.onstop = finalize;
+        this.mediaRecorder.stop();
+      } else {
+        await finalize();
       }
     });
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Upload, Play, Sparkles, Volume2, Clock, AlertCircle } from 'lucide-react';
+import { Mic, Square, Upload, Play, Pause, Sparkles, Volume2, Clock, AlertCircle } from 'lucide-react';
 import { SpeechRecorderService, SAMPLE_RECORDINGS, isSpeechRecognitionSupported } from '../services/speechService';
 import { AudioRecording, SampleRecording } from '../types';
 
@@ -13,6 +13,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
   onSelectSample
 }) => {
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [audioLevel, setAudioLevel] = useState(0);
   const [customTitle, setCustomTitle] = useState('');
@@ -82,7 +83,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     if (!recorderRef.current) return;
 
     if (!isRecording) {
-      // Start Recording
       recorderRef.current.setCallbacks(
         () => {},
         (level) => setAudioLevel(level)
@@ -91,15 +91,16 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       const success = await recorderRef.current.startRecording();
       if (success) {
         setIsRecording(true);
+        setIsPaused(false);
         setElapsedSeconds(0);
         timerRef.current = setInterval(() => {
           setElapsedSeconds((prev) => prev + 1);
         }, 1000);
       }
     } else {
-      // Stop Recording
       if (timerRef.current) clearInterval(timerRef.current);
       setIsRecording(false);
+      setIsPaused(false);
       setAudioLevel(0);
 
       const result = await recorderRef.current.stopRecording();
@@ -122,6 +123,28 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       };
       onRecordingComplete(newRecording);
       setCustomTitle('');
+    }
+  };
+
+  const handlePauseToggle = async () => {
+    if (!recorderRef.current || !isRecording) return;
+
+    if (!isPaused) {
+      const success = recorderRef.current.pauseRecording();
+      if (success) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setIsPaused(true);
+        setAudioLevel(0);
+      }
+      return;
+    }
+
+    const success = recorderRef.current.resumeRecording();
+    if (success) {
+      setIsPaused(false);
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds((prev) => prev + 1);
+      }, 1000);
     }
   };
 
@@ -206,8 +229,27 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', padding: '1.25rem', background: 'rgba(0,0,0,0.15)', borderRadius: 'var(--radius-md)', border: '1px solid var(--bg-card-border)' }}>
         <canvas ref={canvasRef} width={500} height={90} className="waveform-canvas" />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          {/* Main Record / Stop Button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button
+            onClick={handlePauseToggle}
+            disabled={!isRecording}
+            className={`btn-secondary btn-pause ${isPaused ? 'is-paused' : ''} ${isRecording ? 'visible' : ''}`}
+            title={isPaused ? 'Resume Recording' : 'Pause Recording'}
+            aria-label={isPaused ? 'Resume recording' : 'Pause recording'}
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '999px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: isRecording ? 1 : 0.5,
+              pointerEvents: isRecording ? 'auto' : 'none'
+            }}
+          >
+            {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+          </button>
+
           <button
             onClick={handleToggleRecord}
             className={`btn-mic-record ${isRecording ? 'recording' : ''}`}
@@ -222,7 +264,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
               <span>{formatTimer(elapsedSeconds)}</span>
             </div>
             <span style={{ fontSize: '0.75rem', color: isRecording ? '#f43f5e' : 'var(--text-muted)', fontWeight: 600 }}>
-              {isRecording ? '● RECORDING LIVE AUDIO' : 'Click to Record Voice'}
+              {isPaused ? 'PAUSED' : isRecording ? '● RECORDING LIVE AUDIO' : 'Click to Record Voice'}
             </span>
           </div>
         </div>
