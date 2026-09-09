@@ -19,13 +19,11 @@ export interface AudioRecording {
   segments: TranscriptSegment[];
 }
 
-export type NoteTemplateId = 
-  | 'executive-brief' 
-  | 'action-items' 
-  | 'study-flashcards' 
-  | 'meeting-minutes' 
-  | 'mind-map' 
-  | 'custom-prompt';
+export type NoteTemplateId =
+  | 'summarized'
+  | 'flash-cards'
+  | 'notes'
+  | 'possible-questions';
 
 export interface NoteTemplate {
   id: NoteTemplateId;
