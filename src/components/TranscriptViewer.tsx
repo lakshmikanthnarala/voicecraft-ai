@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, Sparkles, Search, Copy, Check, Scissors, Volume2, User, Clock } from 'lucide-react';
+import { FileText, Sparkles, Search, Copy, Check, Scissors, Volume2, User, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { AudioRecording } from '../types';
 import { cleanFillerWords, SAMPLE_RECORDINGS } from '../services/speechService';
 
@@ -15,6 +15,7 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSegments, setShowSegments] = useState(true);
 
   if (!recording) {
     return (
@@ -136,24 +137,50 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
       {/* Speaker Segment Breakdown if available */}
       {recording.segments && recording.segments.length > 0 && (
         <div>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.6rem' }}>
-            👥 Speaker Segments Breakdown
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {recording.segments.map((seg) => (
-              <div key={seg.id} className="glass-card" style={{ padding: '0.65rem 0.85rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
-                  <span style={{ fontSize: '0.775rem', fontWeight: 700, color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <User className="w-3.5 h-3.5" /> {seg.speaker}
-                  </span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    [{seg.startTime}s - {seg.endTime}s]
-                  </span>
+          <button
+            type="button"
+            onClick={() => setShowSegments((prev) => !prev)}
+            aria-expanded={showSegments}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              border: '1px solid var(--bg-card-border)',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(15, 23, 42, 0.3)',
+              color: 'var(--text-secondary)',
+              padding: '0.7rem 0.85rem',
+              marginBottom: '0.75rem',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>👥</span>
+              <span>Speaker Segments Breakdown</span>
+            </span>
+            {showSegments ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+
+          {showSegments && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {recording.segments.map((seg) => (
+                <div key={seg.id} className="glass-card" style={{ padding: '0.65rem 0.85rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                    <span style={{ fontSize: '0.775rem', fontWeight: 700, color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <User className="w-3.5 h-3.5" /> {seg.speaker}
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      [{seg.startTime}s - {seg.endTime}s]
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{seg.text}</p>
                 </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{seg.text}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
