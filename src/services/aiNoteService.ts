@@ -55,7 +55,40 @@ function getTemplateTitle(templateId: NoteTemplateId): string {
     case 'meeting-minutes': return 'Meeting Minutes';
     case 'mind-map': return 'Mind Map Outline';
     case 'custom-prompt': return 'Custom Transformed Note';
+    default: return 'Custom Note';
   }
+}
+
+function normalizeParsedNotePayload(parsed: any): {
+  summary: string;
+  contentMarkdown: string;
+  actionItems?: ActionItem[];
+  flashcards?: Flashcard[];
+  mindMap?: MindMapNode[];
+  tags: string[];
+} | null {
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  const summary = typeof parsed.summary === 'string' && parsed.summary.trim().length > 0
+    ? parsed.summary.trim()
+    : 'AI generated note summary.';
+
+  const contentMarkdown = typeof parsed.contentMarkdown === 'string' && parsed.contentMarkdown.trim().length > 0
+    ? parsed.contentMarkdown.trim()
+    : '## Note\n\nAI-generated content was returned without a structured body.';
+
+  const tags = Array.isArray(parsed.tags) && parsed.tags.length > 0
+    ? parsed.tags.filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag: string) => tag.trim())
+    : ['AI Generated'];
+
+  return {
+    summary,
+    contentMarkdown,
+    actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems as ActionItem[] : undefined,
+    flashcards: Array.isArray(parsed.flashcards) ? parsed.flashcards as Flashcard[] : undefined,
+    mindMap: Array.isArray(parsed.mindMap) ? parsed.mindMap as MindMapNode[] : undefined,
+    tags
+  };
 }
 
 // Local Zero-Config Heuristic NLP Synthesizer
@@ -315,13 +348,20 @@ Return ONLY valid raw JSON without markdown code blocks.`;
     : data?.choices?.[0]?.message?.content;
   if (!textOutput) return null;
 
-  const cleanJsonText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
-  const parsed = JSON.parse(cleanJsonText);
+  const cleanJsonText = String(textOutput).replace(/```json/gi, '').replace(/```/g, '').trim();
 
+  try {
+    const parsed = JSON.parse(cleanJsonText);
+    const normalized = normalizeParsedNotePayload(parsed);
+    if (normalized) return normalized;
+  } catch (error) {
+    console.warn('Configured API returned malformed JSON for note conversion. Falling back to a safe output format.', error);
+  }
+
+  const fallbackText = cleanJsonText || String(textOutput);
   return {
-    summary: parsed.summary || 'AI generated note summary.',
-    contentMarkdown: parsed.contentMarkdown || textOutput,
-    actionItems: parsed.actionItems,
-    tags: parsed.tags || ['AI Generated']
+    summary: 'AI generated note summary.',
+    contentMarkdown: fallbackText.length > 0 ? fallbackText : '## Note\n\nAI-generated content was returned without a structured body.',
+    tags: ['AI Generated']
   };
 }

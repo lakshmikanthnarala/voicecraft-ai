@@ -189,10 +189,12 @@ export function App() {
 
       setActiveNote(generatedNote);
 
-      // Save to saved notes list
-      const updatedList = [generatedNote, ...savedNotes.filter(n => n.id !== generatedNote.id)];
-      setSavedNotes(updatedList);
-      saveNotesToStorage(updatedList);
+      // Save to saved notes list using the latest state so rapid generation does not drop or duplicate notes.
+      setSavedNotes(prevNotes => {
+        const updatedList = [generatedNote, ...prevNotes.filter(n => n.id !== generatedNote.id)];
+        saveNotesToStorage(updatedList);
+        return updatedList;
+      });
 
       // Trigger Confetti Celebration
       confetti({
